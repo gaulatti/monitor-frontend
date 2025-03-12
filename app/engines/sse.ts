@@ -84,7 +84,7 @@ class SSEManager {
    */
   private connect(token: string) {
     console.log('Initializing SSE connection...');
-    const sseHost = window.location.origin.includes('localhost') ? `http://localhost:3000` : import.meta.env.VITE_API_FQDN;
+    const sseHost = window.location.origin.includes('localhost') ? `http://localhost:${import.meta.env.VITE_API_PORT}` : import.meta.env.VITE_API_FQDN;
     this.eventSource = new EventSourcePlus(`${sseHost}/notifications`, {
       headers: {
         Authorization: `Bearer ${token}`,

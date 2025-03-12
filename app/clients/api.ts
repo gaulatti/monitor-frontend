@@ -11,15 +11,17 @@ export enum Method {
 }
 
 /**
- * Sends a request to the specified URL using the specified HTTP method.
- * @param method - The HTTP method to use for the request.
- * @param url - The URL to send the request to.
- * @param data - The data to send with the request (optional).
- * @returns A Promise that resolves to the response data.
+ * Sends an HTTP request using the specified method, URL, and data.
+ *
+ * @param {Method} method - The HTTP method to use for the request (GET, POST, PUT, PATCH, DELETE).
+ * @param {string} [url=''] - The URL to which the request is sent. Defaults to an empty string.
+ * @param {any} [data] - The data to be sent with the request. Optional.
+ * @returns {Promise<any>} - A promise that resolves to the response data.
+ * @throws {Error} - Throws an error if the HTTP method is unsupported or if the request fails.
  */
 const sendRequest = async (method: Method, url: string = '', data?: any) => {
   const { tokens } = await fetchAuthSession();
-  const fullURL = window.location.origin.includes('localhost') ? `http://localhost:3000/${url}` : `${import.meta.env.VITE_API_FQDN}/${url}`;
+  const fullURL = window.location.origin.includes('localhost') ? `http://localhost:${import.meta.env.VITE_API_PORT}/${url}` : `${import.meta.env.VITE_API_FQDN}/${url}`;
 
   const config = {
     headers: {
@@ -56,13 +58,13 @@ const sendRequest = async (method: Method, url: string = '', data?: any) => {
 };
 
 /**
- * Custom hook for making API requests.
+ * Custom hook to make API requests.
  *
- * @param method - The HTTP method for the request.
- * @param dependencies - Additional dependencies to include in the useEffect hook.
- * @param url - The URL for the API request.
- * @param postData - The data to be sent in the request body.
- * @returns An object containing the response data, loading state, and error state.
+ * @param {Method} method - The HTTP method to use for the request (e.g., 'GET', 'POST').
+ * @param {any[]} dependencies - Array of dependencies that will trigger the effect when changed.
+ * @param {string} [url] - The URL to send the request to.
+ * @param {any} [postData] - The data to send with the request, if applicable.
+ * @returns {{ data: any, loading: boolean, error: Error | any }} - An object containing the response data, loading state, and error state.
  */
 const useAPI = (method: Method, dependencies: any[], url?: string, postData?: any) => {
   const [data, setData] = useState<any>();
