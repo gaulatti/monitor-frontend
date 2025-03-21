@@ -1,6 +1,7 @@
 import { Theme } from '@radix-ui/themes';
 import '@radix-ui/themes/styles.css';
 import { Amplify, type ResourcesConfig } from 'aws-amplify';
+import type { JSX } from 'react';
 import { Provider } from 'react-redux';
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
 import type { Route } from './+types/root';
@@ -15,7 +16,6 @@ import { getStore } from './state';
  * required in production.
  */
 import 'aws-amplify/auth/enable-oauth-listener';
-import type { JSX } from 'react';
 
 /**
  * A function that returns an empty array of links.
@@ -86,6 +86,7 @@ export function Layout({ children }: { children: React.ReactNode }): JSX.Element
         <meta charSet='utf-8' />
         <meta name='viewport' content='width=device-width, initial-scale=1' />
         <meta name='anthem' content='https://www.youtube.com/watch?v=HxO6f7ieySo' />
+        <link rel="icon" href="/favicon.png"></link>
         <Meta />
         <Links />
       </head>

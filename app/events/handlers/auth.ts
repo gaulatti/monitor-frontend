@@ -1,6 +1,5 @@
 import { fetchAuthSession, fetchUserAttributes } from 'aws-amplify/auth';
 import { put, select } from 'redux-saga/effects';
-import { SSEManager } from '../../engines/sse';
 import { login as loginDispatcher, setAuthLoaded } from '../../state/dispatchers/auth';
 import { setKickoff } from '../../state/dispatchers/lifecycle';
 import { currentUser as currentUserSelector } from '../../state/selectors/auth';
@@ -22,9 +21,15 @@ function* checkSession(): unknown {
   if (userSub && !isKickoffReady) {
     const { accessToken } = tokens;
     /**
-     * Initialize the SSEManager with the access token.
+     * Initialize the SSE Shared Worker with the access token.
      */
-    SSEManager.getInstance(accessToken.toString());
+    const sseWorker = new SharedWorker(new URL('../../engines/sse.shared.ts', import.meta.url), { type: 'module' });
+    sseWorker.port.start();
+
+    /**
+     * Post the access token to the shared worker.
+     */
+    sseWorker.port.postMessage({ token: accessToken.toString() });
 
     /**
      * Fetch the user attributes.

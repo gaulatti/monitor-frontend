@@ -1,6 +1,8 @@
-import { Flex } from '@radix-ui/themes';
 import { useSelector } from 'react-redux';
 import { Navigate, Outlet } from 'react-router';
+import { AppSidebar } from '~/components/app-sidebar';
+import { OverlaySpinner } from '~/components/spinners';
+import { SidebarInset, SidebarProvider } from '~/components/ui/sidebar';
 import { useAuthStatus } from '~/hooks/useAuth';
 import { getKickoffReady } from '~/state/selectors/lifecycle';
 
@@ -10,13 +12,12 @@ const PrivateLayout = () => {
 
   if (isAuthenticated && isLoaded && isKickoffReady) {
     return (
-      <Flex direction='column' justify='between' style={{ minHeight: '100vh' }}>
-        <main>
-          <pre>header</pre>
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset>
           <Outlet />
-        </main>
-        <pre>footer</pre>
-      </Flex>
+        </SidebarInset>
+      </SidebarProvider>
     );
   }
 
@@ -32,7 +33,7 @@ const PrivateLayout = () => {
    * Renders a loading spinner if the user is not authenticated
    * or the kickoff is not ready.
    */
-  return <pre>spinner</pre>;
+  return <OverlaySpinner />;
 };
 
 export default PrivateLayout;
