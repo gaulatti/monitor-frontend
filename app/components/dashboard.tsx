@@ -196,8 +196,13 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
         });
       },
       (error: Event) => {
-        console.error('SSE connection error:', error);
-        setError(new Error('Real-time connection lost'));
+        console.warn('SSE connection issue:', error);
+        // Don't set error state immediately - this could be a temporary network issue
+        // Only set error if it's a permanent failure (max reconnect attempts reached)
+        if (error.type === 'max-reconnect-attempts') {
+          setError(new Error('Real-time connection failed after multiple attempts. Posts will not update automatically.'));
+        }
+        // For other SSE errors, just log them but don't break the UI
       }
     );
 
@@ -297,7 +302,8 @@ export function Dashboard() {
     );
   }
 
-  if (error) {
+  if (error && error.message.includes('loading news feeds')) {
+    // Only show full error screen for initial loading errors
     return (
       <div className='dashboard-bg'>
         <Header />
@@ -310,7 +316,7 @@ export function Dashboard() {
 
   return (
     <div className='dashboard-bg'>
-      <Header />
+      <Header error={error} />
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <div className='dashboard'>
           <SortableContext items={orderedCategories.map((cat) => cat.key)} strategy={horizontalListSortingStrategy}>
@@ -336,7 +342,7 @@ export function Dashboard() {
   );
 }
 
-function Header() {
+function Header({ error }: { error?: Error | null }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isConnected, setIsConnected] = useState(false);
 
@@ -365,9 +371,13 @@ function Header() {
           {isConnected ? 'LIVE' : 'OFFLINE'}
         </span>
         <span className='header-update'>
-          {isConnected
-            ? 'Real-time updates active'
-            : `Last update: ${currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`}
+          {error && error.message.includes('Real-time connection') ? (
+            <span style={{ color: '#f59e0b' }}>⚠️ {error.message}</span>
+          ) : isConnected ? (
+            'Real-time updates active'
+          ) : (
+            `Last update: ${currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+          )}
         </span>
       </div>
       <div className='header-right'>
