@@ -9,6 +9,8 @@ import { postsAPI } from '../clients/posts';
 import type { Category, CategoryKey, Post, PostEntry } from '../types/api';
 
 const CATEGORIES: Category[] = [
+  { key: 'all', label: 'All', accent: 'gray' },
+  { key: 'relevant', label: 'Relevant', accent: 'purple' },
   { key: 'business', label: 'Business', accent: 'green' },
   { key: 'world', label: 'World', accent: 'blue' },
   { key: 'politics', label: 'Politics', accent: 'yellow' },
@@ -96,6 +98,14 @@ function transformPostToEntries(post: Post): PostEntry[] {
     applicableCategories.push('world');
   }
 
+  // Add "all" category to every post
+  const allCategories = [...applicableCategories, 'all'];
+
+  // Add "relevant" category if relevance >= 4
+  if (post.relevance >= 4) {
+    allCategories.push('relevant');
+  }
+
   // Extract hashtags from content
   const hashtagRegex = /#\w+/g;
   const hashtags = post.content.match(hashtagRegex) || [];
@@ -113,8 +123,11 @@ function transformPostToEntries(post: Post): PostEntry[] {
     cleanContent = cleanContent.substring(0, 200) + '...';
   }
 
+  // Get the primary category (first non-special category) for color coding
+  const primaryCategory = applicableCategories[0] || 'world';
+
   // Create an entry for each applicable category
-  return applicableCategories.map((category) => ({
+  return allCategories.map((category) => ({
     id: `${post.id}-${category}`, // Unique ID for each category instance
     text: cleanContent || post.content.substring(0, 200) + '...',
     source: post.author || post.source,
@@ -128,6 +141,7 @@ function transformPostToEntries(post: Post): PostEntry[] {
     author: post.author,
     relevance: post.relevance,
     posted_at: post.posted_at,
+    primaryCategory: primaryCategory, // Add primary category for color coding
   }));
 }
 
@@ -435,6 +449,17 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
 
   const filteredEntries = filter ? entries.filter((e: PostEntry) => e.text.toLowerCase().includes(filter.toLowerCase())) : entries;
 
+  // Helper function to get the accent color for an entry
+  const getEntryAccent = (entry: PostEntry) => {
+    // For "all" and "relevant" columns, use the primary category color
+    if (category.key === 'all' || category.key === 'relevant') {
+      const primaryCat = CATEGORIES.find(cat => cat.key === entry.primaryCategory);
+      return primaryCat?.accent || 'gray';
+    }
+    // For regular category columns, use the column's accent
+    return category.accent;
+  };
+
   return (
     <div className={`column ${isDragging ? 'column-dragging' : ''}`} data-accent={category.accent}>
       <div className='column-header'>
@@ -458,10 +483,15 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
       </div>
       <div className='column-feed'>
         {filteredEntries.map((entry: PostEntry) => (
-          <div key={entry.id} className='entry' data-relevance={entry.relevance}>
+          <div key={entry.id} className='entry' data-relevance={entry.relevance} data-accent={getEntryAccent(entry)}>
             <div className='entry-header'>
               <span className='timestamp'>{entry.timestamp}</span>
               <span className='source'>{entry.source.toUpperCase()}</span>
+              {(category.key === 'all' || category.key === 'relevant') && entry.primaryCategory && (
+                <span className={`category-badge category-${entry.primaryCategory}`}>
+                  {CATEGORIES.find(cat => cat.key === entry.primaryCategory)?.label.toUpperCase()}
+                </span>
+              )}
             </div>
             <div className='entry-text'>{entry.text}</div>
             <div className='entry-meta'>
@@ -494,6 +524,11 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
                 <div>
                   <strong>Categories:</strong> {entry.category}
                 </div>
+                {entry.primaryCategory && (
+                  <div>
+                    <strong>Primary Category:</strong> {CATEGORIES.find(cat => cat.key === entry.primaryCategory)?.label}
+                  </div>
+                )}
                 <p>In a real implementation, this would fetch additional context, related articles, and detailed analysis for this news story.</p>
               </div>
             )}

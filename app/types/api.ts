@@ -18,9 +18,10 @@ export interface PostEntry {
   author: string;
   relevance: number;
   posted_at: string;
+  primaryCategory?: string;
 }
 
-export type CategoryKey = "business" | "world" | "politics" | "technology" | "weather";
+export type CategoryKey = "all" | "relevant" | "business" | "world" | "politics" | "technology" | "weather";
 
 export interface Category {
   key: CategoryKey;
