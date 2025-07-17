@@ -1,12 +1,23 @@
-import type { Post } from "../types/api";
+import type { Post } from '../types/api';
 
 export interface NotificationPayload {
   id: string;
   content: string;
   source: string;
   author: string;
-  relevance: number;
+  uri: string;
   posted_at: string;
+  relevance: number;
+  lang: string;
+  hash: string;
+  author_id: string | null;
+  author_name: string;
+  author_handle: string;
+  author_avatar: string;
+  media: string[];
+  linkPreview: string;
+  original: string | null;
+  received_at: string;
   categories: string[];
 }
 
@@ -41,7 +52,7 @@ export class NotificationsClient {
 
       const url = `${this.baseUrl}/notifications`;
       console.log(`Attempting SSE connection (attempt ${this.reconnectAttempts + 1})`);
-      
+
       this.eventSource = new EventSource(url);
 
       this.eventSource.onmessage = (event) => {
@@ -49,17 +60,28 @@ export class NotificationsClient {
           // Reset reconnection state on successful message
           this.reconnectAttempts = 0;
           this.reconnectDelay = 1000;
-          
+
           const payload: NotificationPayload = JSON.parse(event.data);
-          
+
           // Transform notification payload to Post format
           const post: Post = {
             id: payload.id,
             content: payload.content,
             source: payload.source,
             author: payload.author,
-            relevance: payload.relevance,
+            uri: payload.uri,
             posted_at: payload.posted_at,
+            relevance: payload.relevance,
+            lang: payload.lang,
+            hash: payload.hash,
+            author_id: payload.author_id,
+            author_name: payload.author_name,
+            author_handle: payload.author_handle,
+            author_avatar: payload.author_avatar,
+            media: payload.media,
+            linkPreview: payload.linkPreview,
+            original: payload.original,
+            received_at: payload.received_at,
             categories: payload.categories,
           };
 
@@ -71,7 +93,7 @@ export class NotificationsClient {
 
       this.eventSource.onerror = (error) => {
         console.error('SSE connection error:', error);
-        
+
         // Don't immediately call onError - we'll try to reconnect first
         if (this.eventSource?.readyState === EventSource.CLOSED) {
           console.log('SSE connection closed, attempting to reconnect...');
@@ -107,9 +129,9 @@ export class NotificationsClient {
 
     this.isReconnecting = true;
     this.reconnectAttempts++;
-    
+
     console.log(`Reconnecting in ${this.reconnectDelay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-    
+
     setTimeout(() => {
       if (this.eventSource) {
         this.eventSource.close();

@@ -47,6 +47,31 @@ const CATEGORY_MAPPING: Record<string, CategoryKey> = {
 };
 
 function transformPostToEntries(post: Post): PostEntry[] {
+  console.log('=== TRANSFORM DEBUG START ===');
+  console.log('Transform input post:', { 
+    id: post.id, 
+    uri: post.uri, 
+    uriType: typeof post.uri,
+    uriLength: post.uri?.length,
+    media: post.media, 
+    linkPreview: post.linkPreview,
+    hasUri: !!post.uri
+  });
+  console.log('Full post object keys:', Object.keys(post));
+  console.log('Post.uri value:', JSON.stringify(post.uri));
+  console.log('=== TRANSFORM DEBUG END ===');
+
+  // Defensive check for required fields
+  if (!post.categories || !Array.isArray(post.categories)) {
+    console.error('Post missing categories field:', post);
+    return [];
+  }
+
+  if (!post.id || !post.content) {
+    console.error('Post missing required fields (id/content):', post);
+    return [];
+  }
+
   // Get all applicable categories for this post from the categories array
   const applicableCategories = post.categories
     .map((cat) => CATEGORY_MAPPING[cat])
@@ -111,26 +136,25 @@ function transformPostToEntries(post: Post): PostEntry[] {
   const hashtags = post.content.match(hashtagRegex) || [];
   const tags = hashtags.map((tag) => tag.slice(1)); // Remove # symbol
 
-  // Clean content by removing URLs and excessive hashtags
+  // Clean content by removing excessive hashtags, but keep URLs for consistency
   let cleanContent = post.content
-    .replace(/https?:\/\/[^\s]+/g, '') // Remove URLs
     .replace(/#\w+\s*/g, '') // Remove hashtags
     .replace(/\s+/g, ' ') // Normalize whitespace
     .trim();
 
-  // Truncate if too long
-  if (cleanContent.length > 200) {
-    cleanContent = cleanContent.substring(0, 200) + '...';
+  // Truncate if too long - more compact for better space usage
+  if (cleanContent.length > 300) {
+    cleanContent = cleanContent.substring(0, 300) + '...';
   }
 
   // Get the primary category (first non-special category) for color coding
   const primaryCategory = applicableCategories[0] || 'world';
 
   // Create an entry for each applicable category
-  return allCategories.map((category) => ({
+  const entries = allCategories.map((category) => ({
     id: `${post.id}-${category}`, // Unique ID for each category instance
-    text: cleanContent || post.content.substring(0, 200) + '...',
-    source: post.author || post.source,
+    text: cleanContent || post.content.substring(0, 300) + '...',
+    source: post.author_name || post.author || post.source,
     tags: tags.slice(0, 3), // Limit to 3 tags
     timestamp: new Date(post.posted_at).toLocaleTimeString([], {
       hour: '2-digit',
@@ -139,10 +163,26 @@ function transformPostToEntries(post: Post): PostEntry[] {
     }),
     category: category as CategoryKey,
     author: post.author,
+    author_name: post.author_name,
+    author_handle: post.author_handle,
+    author_avatar: post.author_avatar,
     relevance: post.relevance,
     posted_at: post.posted_at,
     primaryCategory: primaryCategory, // Add primary category for color coding
+    uri: post.uri,
+    media: post.media,
+    linkPreview: post.linkPreview,
+    lang: post.lang,
   }));
+
+  console.log('Transform output entries:', entries.map(e => ({ 
+    id: e.id, 
+    uri: e.uri, 
+    hasUri: !!e.uri,
+    media: e.media 
+  })));
+
+  return entries;
 }
 
 function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
@@ -155,8 +195,11 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
       try {
         setLoading(true);
         const posts = await postsAPI.getAllPosts();
+        console.log('Initial posts sample:', posts.slice(0, 2).map(p => ({ id: p.id, uri: p.uri, media: p.media, linkPreview: p.linkPreview })));
+
         // Transform posts to entries and flatten the array since each post can create multiple entries
         const transformedEntries = posts.flatMap(transformPostToEntries);
+        console.log('Initial transformed entries sample:', transformedEntries.slice(0, 2).map(e => ({ id: e.id, uri: e.uri, media: e.media })));
 
         // Debug logging to see category distribution
         const categoryCount = transformedEntries.reduce((acc, entry) => {
@@ -182,8 +225,17 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
     // Set up SSE connection for real-time updates
     const cleanup = notificationsClient.connect(
       (newPost: Post) => {
-        console.log('Received new post via SSE:', newPost);
+        console.log('=== RAW SSE POST START ===');
+        console.log('Received new post via SSE:', JSON.stringify(newPost, null, 2));
+        console.log('=== RAW SSE POST END ===');
+        console.log('SSE Post ID:', newPost.id);
+        console.log('SSE Post URI:', newPost.uri);
+        console.log('SSE Post URI type:', typeof newPost.uri);
+        console.log('SSE Post media:', newPost.media);
+        console.log('SSE Post linkPreview:', newPost.linkPreview);
+        
         const newEntries = transformPostToEntries(newPost);
+        console.log('Transformed SSE entries:', newEntries.map(e => ({ id: e.id, uri: e.uri, media: e.media })));
 
         setEntries((prevEntries) => {
           // Add new entries to the beginning of the list
@@ -482,11 +534,26 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
         </div>
       </div>
       <div className='column-feed'>
-        {filteredEntries.map((entry: PostEntry) => (
+        {filteredEntries.map((entry: PostEntry) => {
+          console.log(`Rendering entry ${entry.id}:`, { uri: entry.uri, hasUri: !!entry.uri });
+          return (
           <div key={entry.id} className='entry' data-relevance={entry.relevance} data-accent={getEntryAccent(entry)}>
             <div className='entry-header'>
               <span className='timestamp'>{entry.timestamp}</span>
-              <span className='source'>{entry.source.toUpperCase()}</span>
+              <div className='source-info'>
+                {entry.author_avatar && (
+                  <img 
+                    src={entry.author_avatar} 
+                    alt={entry.author_name} 
+                    className='author-avatar'
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                )}
+                <span className='source'>{entry.author_name?.toUpperCase() || entry.source.toUpperCase()}</span>
+              </div>
+
               {(category.key === 'all' || category.key === 'relevant') && entry.primaryCategory && (
                 <span className={`category-badge category-${entry.primaryCategory}`}>
                   {CATEGORIES.find(cat => cat.key === entry.primaryCategory)?.label.toUpperCase()}
@@ -494,6 +561,15 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
               )}
             </div>
             <div className='entry-text'>{entry.text}</div>
+            {entry.media && entry.media.length > 0 && (
+              <div className='entry-media'>
+                {entry.media.slice(0, 2).map((mediaUrl, index) => (
+                  <a key={index} href={mediaUrl} target='_blank' rel='noopener noreferrer' className='media-link'>
+                    🔗 {new URL(mediaUrl).hostname}
+                  </a>
+                ))}
+              </div>
+            )}
             <div className='entry-meta'>
               <div className='tags'>
                 {entry.tags.map((tag: string) => (
@@ -501,39 +577,125 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
                     #{tag.toUpperCase()}
                   </span>
                 ))}
+                {entry.lang && entry.lang !== 'en' && (
+                  <span className='lang-tag'>{entry.lang.toUpperCase()}</span>
+                )}
               </div>
               <div className='entry-actions'>
                 <button className='btn btn-small' onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}>
                   {expanded === entry.id ? 'Collapse' : 'Expand'}
                 </button>
+                {entry.uri ? (
+                  <a href={entry.uri} target='_blank' rel='noopener noreferrer' className='btn btn-small'>
+                    View Original
+                  </a>
+                ) : (
+                  <span style={{ fontSize: '10px', color: '#6b7280' }}>No URI</span>
+                )}
                 <button className='btn btn-small'>Context</button>
                 <button className='btn btn-small'>Share</button>
               </div>
             </div>
             {expanded === entry.id && (
               <div className='entry-expanded'>
-                <div>
-                  <strong>Source:</strong> {entry.author}
-                </div>
-                <div>
-                  <strong>Relevance Score:</strong> {entry.relevance}/10
-                </div>
-                <div>
-                  <strong>Posted:</strong> {new Date(entry.posted_at).toLocaleString()}
-                </div>
-                <div>
-                  <strong>Categories:</strong> {entry.category}
-                </div>
-                {entry.primaryCategory && (
-                  <div>
-                    <strong>Primary Category:</strong> {CATEGORIES.find(cat => cat.key === entry.primaryCategory)?.label}
+                <div className='expanded-content'>
+                  <div className='expanded-row'>
+                    <strong>Source:</strong> {entry.author_name || entry.author}
+                    {entry.author_handle && (
+                      <a href={`https://twitter.com/${entry.author_handle}`} target='_blank' rel='noopener noreferrer' className='expanded-handle'>
+                        @{entry.author_handle}
+                      </a>
+                    )}
                   </div>
-                )}
-                <p>In a real implementation, this would fetch additional context, related articles, and detailed analysis for this news story.</p>
+                  
+                  <div className='expanded-row'>
+                    <strong>Relevance:</strong> 
+                    <span className={`relevance-score relevance-${Math.ceil(entry.relevance / 2)}`}>
+                      {entry.relevance}/10
+                    </span>
+                    {' • '}
+                    <strong>Posted:</strong> {new Date(entry.posted_at).toLocaleString()}
+                  </div>
+                  
+                  <div className='expanded-row'>
+                    <strong>Language:</strong> 
+                    <span className='lang-indicator'>{entry.lang?.toUpperCase() || 'N/A'}</span>
+                    {' • '}
+                    <strong>Category:</strong> 
+                    <span className={`category-badge category-${entry.primaryCategory}`}>
+                      {CATEGORIES.find(cat => cat.key === entry.primaryCategory)?.label || 'Unknown'}
+                    </span>
+                  </div>
+                  
+                  {(entry.uri || entry.linkPreview || (entry.media && entry.media.length > 0)) && (
+                    <div className='expanded-row'>
+                      <strong>Links:</strong>{' '}
+                      {entry.uri && (
+                        <a href={entry.uri} target='_blank' rel='noopener noreferrer' className='expanded-link'>
+                          {new URL(entry.uri).hostname}
+                        </a>
+                      )}
+                      {entry.linkPreview && entry.linkPreview !== entry.uri && (
+                        <>
+                          {entry.uri && ' • '}
+                          <a href={entry.linkPreview} target='_blank' rel='noopener noreferrer' className='expanded-link'>
+                            Preview
+                          </a>
+                        </>
+                      )}
+                      {entry.media && entry.media.length > 0 && entry.media.map((mediaUrl, index) => (
+                        <span key={index}>
+                          {(entry.uri || entry.linkPreview || index > 0) && ' • '}
+                          <a href={mediaUrl} target='_blank' rel='noopener noreferrer' className='expanded-link'>
+                            Media {index + 1}
+                          </a>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                <div className='expanded-footer'>
+                  <div className='expanded-actions'>
+                    <button 
+                      className='btn btn-small' 
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(entry.text);
+                        } catch (err) {
+                          console.warn('Failed to copy text:', err);
+                        }
+                      }}
+                    >
+                      Copy Text
+                    </button>
+                    <button 
+                      className='btn btn-small' 
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(entry.uri);
+                        } catch (err) {
+                          console.warn('Failed to copy link:', err);
+                        }
+                      }}
+                    >
+                      Copy Link
+                    </button>
+                    {entry.uri && (
+                      <a href={entry.uri} target='_blank' rel='noopener noreferrer' className='btn btn-small'>
+                        Open
+                      </a>
+                    )}
+                  </div>
+                  <div className='expanded-meta'>
+                    <span className='post-id'>#{entry.id.split('-')[0].slice(-6)}</span>
+                  </div>
+                </div>
               </div>
             )}
           </div>
-        ))}
+        );
+        })}
         {filteredEntries.length === 0 && (
           <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280' }}>{muted ? 'Feed muted' : 'No news available for this category'}</div>
         )}
