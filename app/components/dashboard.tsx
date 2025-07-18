@@ -46,6 +46,19 @@ const CATEGORY_MAPPING: Record<string, CategoryKey> = {
   legal: 'politics', // Legal goes to politics
 };
 
+// Helper function to safely get hostname from URL, skipping non-HTTP protocols
+function getUrlHostname(url: string): string | null {
+  try {
+    // Skip non-HTTP protocols like at://, did:, etc.
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return null;
+    }
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
 function transformPostToEntries(post: Post): PostEntry[] {
   console.log('=== TRANSFORM DEBUG START ===');
   console.log('Transform input post:', { 
@@ -143,8 +156,8 @@ function transformPostToEntries(post: Post): PostEntry[] {
     .trim();
 
   // Truncate if too long - more compact for better space usage
-  if (cleanContent.length > 300) {
-    cleanContent = cleanContent.substring(0, 300) + '...';
+  if (cleanContent.length > 500) {
+    cleanContent = cleanContent.substring(0, 500) + '...';
   }
 
   // Get the primary category (first non-special category) for color coding
@@ -561,13 +574,21 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
               )}
             </div>
             <div className='entry-text'>{entry.text}</div>
-            {entry.media && entry.media.length > 0 && (
+            {(entry.uri || (entry.media && entry.media.length > 0)) && (
               <div className='entry-media'>
-                {entry.media.slice(0, 2).map((mediaUrl, index) => (
-                  <a key={index} href={mediaUrl} target='_blank' rel='noopener noreferrer' className='media-link'>
-                    🔗 {new URL(mediaUrl).hostname}
+                {entry.uri && getUrlHostname(entry.uri) && (
+                  <a href={entry.uri} target='_blank' rel='noopener noreferrer' className='media-link'>
+                    🔗 Original ({getUrlHostname(entry.uri)})
                   </a>
-                ))}
+                )}
+                {entry.media && entry.media.length > 0 && entry.media.slice(0, 2).map((mediaUrl, index) => {
+                  const hostname = getUrlHostname(mediaUrl);
+                  return hostname ? (
+                    <a key={index} href={mediaUrl} target='_blank' rel='noopener noreferrer' className='media-link'>
+                      🔗 {hostname}
+                    </a>
+                  ) : null;
+                })}
               </div>
             )}
             <div className='entry-meta'>
@@ -585,13 +606,6 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
                 <button className='btn btn-small' onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}>
                   {expanded === entry.id ? 'Collapse' : 'Expand'}
                 </button>
-                {entry.uri ? (
-                  <a href={entry.uri} target='_blank' rel='noopener noreferrer' className='btn btn-small'>
-                    View Original
-                  </a>
-                ) : (
-                  <span style={{ fontSize: '10px', color: '#6b7280' }}>No URI</span>
-                )}
                 <button className='btn btn-small'>Context</button>
                 <button className='btn btn-small'>Share</button>
               </div>
@@ -626,33 +640,6 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
                       {CATEGORIES.find(cat => cat.key === entry.primaryCategory)?.label || 'Unknown'}
                     </span>
                   </div>
-                  
-                  {(entry.uri || entry.linkPreview || (entry.media && entry.media.length > 0)) && (
-                    <div className='expanded-row'>
-                      <strong>Links:</strong>{' '}
-                      {entry.uri && (
-                        <a href={entry.uri} target='_blank' rel='noopener noreferrer' className='expanded-link'>
-                          {new URL(entry.uri).hostname}
-                        </a>
-                      )}
-                      {entry.linkPreview && entry.linkPreview !== entry.uri && (
-                        <>
-                          {entry.uri && ' • '}
-                          <a href={entry.linkPreview} target='_blank' rel='noopener noreferrer' className='expanded-link'>
-                            Preview
-                          </a>
-                        </>
-                      )}
-                      {entry.media && entry.media.length > 0 && entry.media.map((mediaUrl, index) => (
-                        <span key={index}>
-                          {(entry.uri || entry.linkPreview || index > 0) && ' • '}
-                          <a href={mediaUrl} target='_blank' rel='noopener noreferrer' className='expanded-link'>
-                            Media {index + 1}
-                          </a>
-                        </span>
-                      ))}
-                    </div>
-                  )}
                 </div>
                 
                 <div className='expanded-footer'>
@@ -669,18 +656,20 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
                     >
                       Copy Text
                     </button>
-                    <button 
-                      className='btn btn-small' 
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(entry.uri);
-                        } catch (err) {
-                          console.warn('Failed to copy link:', err);
-                        }
-                      }}
-                    >
-                      Copy Link
-                    </button>
+                    {entry.uri && (
+                      <button 
+                        className='btn btn-small' 
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(entry.uri);
+                          } catch (err) {
+                            console.warn('Failed to copy link:', err);
+                          }
+                        }}
+                      >
+                        Copy Link
+                      </button>
+                    )}
                     {entry.uri && (
                       <a href={entry.uri} target='_blank' rel='noopener noreferrer' className='btn btn-small'>
                         Open
