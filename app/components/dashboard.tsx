@@ -601,7 +601,7 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
                 <div className='entry-media'>
                   {entry.uri && getUrlHostname(entry.uri) && (
                     <a href={entry.uri} target='_blank' rel='noopener noreferrer' className='media-link'>
-                      🔗 Original ({getUrlHostname(entry.uri)})
+                      🔗 Source ({getUrlHostname(entry.uri)})
                     </a>
                   )}
                   {entry.media &&
