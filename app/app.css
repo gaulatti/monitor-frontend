@@ -1155,3 +1155,63 @@ html {
   color: #8b5cf6;
   background: rgba(139, 92, 246, 0.1);
 }
+
+/* Media Image Preview Styles */
+.media-image {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.2s ease;
+}
+
+.media-image:hover {
+  transform: translateY(-1px);
+  box-shadow: 
+    0 4px 8px rgba(0, 0, 0, 0.2),
+    0 2px 4px rgba(0, 0, 0, 0.1);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.media-preview {
+  max-width: 300px;
+  max-height: 200px;
+  width: auto;
+  height: auto;
+  display: block;
+  object-fit: cover;
+  transition: opacity 0.2s ease;
+}
+
+.media-image:hover .media-preview {
+  opacity: 0.9;
+}
+
+.media-link-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  cursor: pointer;
+}
+
+.media-image:hover .media-link-overlay {
+  opacity: 1;
+}
+
+.media-link-overlay::after {
+  content: "🔗";
+  font-size: 1.2em;
+  color: white;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}

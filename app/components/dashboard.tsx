@@ -59,16 +59,27 @@ function getUrlHostname(url: string): string | null {
   }
 }
 
+// Helper function to check if a URL is an image
+function isImageUrl(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname.toLowerCase();
+    return /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)(\?.*)?$/.test(pathname);
+  } catch {
+    return false;
+  }
+}
+
 function transformPostToEntries(post: Post): PostEntry[] {
   console.log('=== TRANSFORM DEBUG START ===');
-  console.log('Transform input post:', { 
-    id: post.id, 
-    uri: post.uri, 
+  console.log('Transform input post:', {
+    id: post.id,
+    uri: post.uri,
     uriType: typeof post.uri,
     uriLength: post.uri?.length,
-    media: post.media, 
+    media: post.media,
     linkPreview: post.linkPreview,
-    hasUri: !!post.uri
+    hasUri: !!post.uri,
   });
   console.log('Full post object keys:', Object.keys(post));
   console.log('Post.uri value:', JSON.stringify(post.uri));
@@ -188,12 +199,15 @@ function transformPostToEntries(post: Post): PostEntry[] {
     lang: post.lang,
   }));
 
-  console.log('Transform output entries:', entries.map(e => ({ 
-    id: e.id, 
-    uri: e.uri, 
-    hasUri: !!e.uri,
-    media: e.media 
-  })));
+  console.log(
+    'Transform output entries:',
+    entries.map((e) => ({
+      id: e.id,
+      uri: e.uri,
+      hasUri: !!e.uri,
+      media: e.media,
+    }))
+  );
 
   return entries;
 }
@@ -208,11 +222,17 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
       try {
         setLoading(true);
         const posts = await postsAPI.getAllPosts();
-        console.log('Initial posts sample:', posts.slice(0, 2).map(p => ({ id: p.id, uri: p.uri, media: p.media, linkPreview: p.linkPreview })));
+        console.log(
+          'Initial posts sample:',
+          posts.slice(0, 2).map((p) => ({ id: p.id, uri: p.uri, media: p.media, linkPreview: p.linkPreview }))
+        );
 
         // Transform posts to entries and flatten the array since each post can create multiple entries
         const transformedEntries = posts.flatMap(transformPostToEntries);
-        console.log('Initial transformed entries sample:', transformedEntries.slice(0, 2).map(e => ({ id: e.id, uri: e.uri, media: e.media })));
+        console.log(
+          'Initial transformed entries sample:',
+          transformedEntries.slice(0, 2).map((e) => ({ id: e.id, uri: e.uri, media: e.media }))
+        );
 
         // Debug logging to see category distribution
         const categoryCount = transformedEntries.reduce((acc, entry) => {
@@ -246,9 +266,12 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
         console.log('SSE Post URI type:', typeof newPost.uri);
         console.log('SSE Post media:', newPost.media);
         console.log('SSE Post linkPreview:', newPost.linkPreview);
-        
+
         const newEntries = transformPostToEntries(newPost);
-        console.log('Transformed SSE entries:', newEntries.map(e => ({ id: e.id, uri: e.uri, media: e.media })));
+        console.log(
+          'Transformed SSE entries:',
+          newEntries.map((e) => ({ id: e.id, uri: e.uri, media: e.media }))
+        );
 
         setEntries((prevEntries) => {
           // Add new entries to the beginning of the list
@@ -518,7 +541,7 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
   const getEntryAccent = (entry: PostEntry) => {
     // For "all" and "relevant" columns, use the primary category color
     if (category.key === 'all' || category.key === 'relevant') {
-      const primaryCat = CATEGORIES.find(cat => cat.key === entry.primaryCategory);
+      const primaryCat = CATEGORIES.find((cat) => cat.key === entry.primaryCategory);
       return primaryCat?.accent || 'gray';
     }
     // For regular category columns, use the column's accent
@@ -550,140 +573,166 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
         {filteredEntries.map((entry: PostEntry) => {
           console.log(`Rendering entry ${entry.id}:`, { uri: entry.uri, hasUri: !!entry.uri });
           return (
-          <div key={entry.id} className='entry' data-relevance={entry.relevance} data-accent={getEntryAccent(entry)}>
-            <div className='entry-header'>
-              <span className='timestamp'>{entry.timestamp}</span>
-              <div className='source-info'>
-                {entry.author_avatar && (
-                  <img 
-                    src={entry.author_avatar} 
-                    alt={entry.author_name} 
-                    className='author-avatar'
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
-                )}
-                <span className='source'>{entry.author_name?.toUpperCase() || entry.source.toUpperCase()}</span>
-              </div>
-
-              {(category.key === 'all' || category.key === 'relevant') && entry.primaryCategory && (
-                <span className={`category-badge category-${entry.primaryCategory}`}>
-                  {CATEGORIES.find(cat => cat.key === entry.primaryCategory)?.label.toUpperCase()}
-                </span>
-              )}
-            </div>
-            <div className='entry-text'>{entry.text}</div>
-            {(entry.uri || (entry.media && entry.media.length > 0)) && (
-              <div className='entry-media'>
-                {entry.uri && getUrlHostname(entry.uri) && (
-                  <a href={entry.uri} target='_blank' rel='noopener noreferrer' className='media-link'>
-                    🔗 Original ({getUrlHostname(entry.uri)})
-                  </a>
-                )}
-                {entry.media && entry.media.length > 0 && entry.media.slice(0, 2).map((mediaUrl, index) => {
-                  const hostname = getUrlHostname(mediaUrl);
-                  return hostname ? (
-                    <a key={index} href={mediaUrl} target='_blank' rel='noopener noreferrer' className='media-link'>
-                      🔗 {hostname}
-                    </a>
-                  ) : null;
-                })}
-              </div>
-            )}
-            <div className='entry-meta'>
-              <div className='tags'>
-                {entry.tags.map((tag: string) => (
-                  <span key={tag} className='tag'>
-                    #{tag.toUpperCase()}
-                  </span>
-                ))}
-                {entry.lang && entry.lang !== 'en' && (
-                  <span className='lang-tag'>{entry.lang.toUpperCase()}</span>
-                )}
-              </div>
-              <div className='entry-actions'>
-                <button className='btn btn-small' onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}>
-                  {expanded === entry.id ? 'Collapse' : 'Expand'}
-                </button>
-                <button className='btn btn-small'>Context</button>
-                <button className='btn btn-small'>Share</button>
-              </div>
-            </div>
-            {expanded === entry.id && (
-              <div className='entry-expanded'>
-                <div className='expanded-content'>
-                  <div className='expanded-row'>
-                    <strong>Source:</strong> {entry.author_name || entry.author}
-                    {entry.author_handle && (
-                      <a href={`https://twitter.com/${entry.author_handle}`} target='_blank' rel='noopener noreferrer' className='expanded-handle'>
-                        @{entry.author_handle}
-                      </a>
-                    )}
-                  </div>
-                  
-                  <div className='expanded-row'>
-                    <strong>Relevance:</strong> 
-                    <span className={`relevance-score relevance-${Math.ceil(entry.relevance / 2)}`}>
-                      {entry.relevance}/10
-                    </span>
-                    {' • '}
-                    <strong>Posted:</strong> {new Date(entry.posted_at).toLocaleString()}
-                  </div>
-                  
-                  <div className='expanded-row'>
-                    <strong>Language:</strong> 
-                    <span className='lang-indicator'>{entry.lang?.toUpperCase() || 'N/A'}</span>
-                    {' • '}
-                    <strong>Category:</strong> 
-                    <span className={`category-badge category-${entry.primaryCategory}`}>
-                      {CATEGORIES.find(cat => cat.key === entry.primaryCategory)?.label || 'Unknown'}
-                    </span>
-                  </div>
-                </div>
-                
-                <div className='expanded-footer'>
-                  <div className='expanded-actions'>
-                    <button 
-                      className='btn btn-small' 
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(entry.text);
-                        } catch (err) {
-                          console.warn('Failed to copy text:', err);
-                        }
+            <div key={entry.id} className='entry' data-relevance={entry.relevance} data-accent={getEntryAccent(entry)}>
+              <div className='entry-header'>
+                <span className='timestamp'>{entry.timestamp}</span>
+                <div className='source-info'>
+                  {entry.author_avatar && (
+                    <img
+                      src={entry.author_avatar}
+                      alt={entry.author_name}
+                      className='author-avatar'
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
                       }}
-                    >
-                      Copy Text
-                    </button>
-                    {entry.uri && (
-                      <button 
-                        className='btn btn-small' 
+                    />
+                  )}
+                  <span className='source'>{entry.author_name?.toUpperCase() || entry.source.toUpperCase()}</span>
+                </div>
+
+                {(category.key === 'all' || category.key === 'relevant') && entry.primaryCategory && (
+                  <span className={`category-badge category-${entry.primaryCategory}`}>
+                    {CATEGORIES.find((cat) => cat.key === entry.primaryCategory)?.label.toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <div className='entry-text'>{entry.text}</div>
+              {(entry.uri || (entry.media && entry.media.length > 0)) && (
+                <div className='entry-media'>
+                  {entry.uri && getUrlHostname(entry.uri) && (
+                    <a href={entry.uri} target='_blank' rel='noopener noreferrer' className='media-link'>
+                      🔗 Original ({getUrlHostname(entry.uri)})
+                    </a>
+                  )}
+                  {entry.media &&
+                    entry.media.length > 0 &&
+                    entry.media.slice(0, 2).map((mediaUrl, index) => {
+                      const hostname = getUrlHostname(mediaUrl);
+                      if (!hostname) return null;
+
+                      if (isImageUrl(mediaUrl)) {
+                        return (
+                          <div key={index} className='media-image'>
+                            <img
+                              src={mediaUrl}
+                              alt={`Media ${index + 1}`}
+                              className='media-preview'
+                              onError={(e) => {
+                                // Fallback to link if image fails to load
+                                e.currentTarget.style.display = 'none';
+                                const fallbackLink = document.createElement('a');
+                                fallbackLink.href = entry.uri || mediaUrl;
+                                fallbackLink.target = '_blank';
+                                fallbackLink.rel = 'noopener noreferrer';
+                                fallbackLink.className = 'media-link';
+                                fallbackLink.textContent = `🔗 ${getUrlHostname(entry.uri || mediaUrl)}`;
+                                e.currentTarget.parentNode?.appendChild(fallbackLink);
+                              }}
+                            />
+                            <a href={entry.uri || mediaUrl} target='_blank' rel='noopener noreferrer' className='media-link-overlay'>
+                              🔗{' '}
+                            </a>
+                          </div>
+                        );
+                      } else {
+                        return (
+                          <a key={index} href={mediaUrl} target='_blank' rel='noopener noreferrer' className='media-link'>
+                            🔗 {hostname}
+                          </a>
+                        );
+                      }
+                    })}
+                </div>
+              )}
+              <div className='entry-meta'>
+                <div className='tags'>
+                  {entry.tags.map((tag: string) => (
+                    <span key={tag} className='tag'>
+                      #{tag.toUpperCase()}
+                    </span>
+                  ))}
+                  {entry.lang && entry.lang !== 'en' && <span className='lang-tag'>{entry.lang.toUpperCase()}</span>}
+                </div>
+                <div className='entry-actions'>
+                  <button className='btn btn-small' onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}>
+                    {expanded === entry.id ? 'Collapse' : 'Expand'}
+                  </button>
+                  <button className='btn btn-small'>Context</button>
+                  <button className='btn btn-small'>Share</button>
+                </div>
+              </div>
+              {expanded === entry.id && (
+                <div className='entry-expanded'>
+                  <div className='expanded-content'>
+                    <div className='expanded-row'>
+                      <strong>Source:</strong> {entry.author_name || entry.author}
+                      {entry.author_handle && (
+                        <a href={`https://twitter.com/${entry.author_handle}`} target='_blank' rel='noopener noreferrer' className='expanded-handle'>
+                          @{entry.author_handle}
+                        </a>
+                      )}
+                    </div>
+
+                    <div className='expanded-row'>
+                      <strong>Relevance:</strong>
+                      <span className={`relevance-score relevance-${Math.ceil(entry.relevance / 2)}`}>{entry.relevance}/10</span>
+                      {' • '}
+                      <strong>Posted:</strong> {new Date(entry.posted_at).toLocaleString()}
+                    </div>
+
+                    <div className='expanded-row'>
+                      <strong>Language:</strong>
+                      <span className='lang-indicator'>{entry.lang?.toUpperCase() || 'N/A'}</span>
+                      {' • '}
+                      <strong>Category:</strong>
+                      <span className={`category-badge category-${entry.primaryCategory}`}>
+                        {CATEGORIES.find((cat) => cat.key === entry.primaryCategory)?.label || 'Unknown'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className='expanded-footer'>
+                    <div className='expanded-actions'>
+                      <button
+                        className='btn btn-small'
                         onClick={async () => {
                           try {
-                            await navigator.clipboard.writeText(entry.uri);
+                            await navigator.clipboard.writeText(entry.text);
                           } catch (err) {
-                            console.warn('Failed to copy link:', err);
+                            console.warn('Failed to copy text:', err);
                           }
                         }}
                       >
-                        Copy Link
+                        Copy Text
                       </button>
-                    )}
-                    {entry.uri && (
-                      <a href={entry.uri} target='_blank' rel='noopener noreferrer' className='btn btn-small'>
-                        Open
-                      </a>
-                    )}
-                  </div>
-                  <div className='expanded-meta'>
-                    <span className='post-id'>#{entry.id.split('-')[0].slice(-6)}</span>
+                      {entry.uri && (
+                        <button
+                          className='btn btn-small'
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(entry.uri);
+                            } catch (err) {
+                              console.warn('Failed to copy link:', err);
+                            }
+                          }}
+                        >
+                          Copy Link
+                        </button>
+                      )}
+                      {entry.uri && (
+                        <a href={entry.uri} target='_blank' rel='noopener noreferrer' className='btn btn-small'>
+                          Open
+                        </a>
+                      )}
+                    </div>
+                    <div className='expanded-meta'>
+                      <span className='post-id'>#{entry.id.split('-')[0].slice(-6)}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-        );
+              )}
+            </div>
+          );
         })}
         {filteredEntries.length === 0 && (
           <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280' }}>{muted ? 'Feed muted' : 'No news available for this category'}</div>
