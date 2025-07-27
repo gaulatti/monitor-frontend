@@ -179,7 +179,7 @@ function transformPostToEntries(post: Post): PostEntry[] {
     id: `${post.id}-${category}`, // Unique ID for each category instance
     text: cleanContent || post.content.substring(0, 300) + '...',
     source: post.author_name || post.author || post.source,
-    tags: tags.slice(0, 3), // Limit to 3 tags
+    tags: tags, // Include all tags
     timestamp: new Date(post.posted_at).toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',
@@ -277,7 +277,7 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
           // Add new entries to the beginning of the list
           const updatedEntries = [...newEntries, ...prevEntries];
 
-          // Keep only the most recent 100 entries per category to prevent memory issues
+          // Sort by category without limiting entries
           const entriesByCategory = updatedEntries.reduce((acc, entry) => {
             const category = entry.category as CategoryKey;
             if (!acc[category]) {
@@ -287,14 +287,13 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
             return acc;
           }, {} as Record<CategoryKey, PostEntry[]>);
 
-          // Limit to 100 entries per category, keeping the most recent
-          const limitedEntries: PostEntry[] = [];
+          const allEntries: PostEntry[] = [];
           Object.entries(entriesByCategory).forEach(([category, categoryEntries]) => {
-            const sorted = categoryEntries.sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime()).slice(0, 100);
-            limitedEntries.push(...sorted);
+            const sorted = categoryEntries.sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime());
+            allEntries.push(...sorted);
           });
 
-          return limitedEntries;
+          return allEntries;
         });
       },
       (error: Event) => {
@@ -317,8 +316,7 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
 function useCategoryEntries(category: CategoryKey, allEntries: PostEntry[]): PostEntry[] {
   return allEntries
     .filter((entry) => entry.category === category)
-    .sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime())
-    .slice(0, 20); // Limit to 20 most recent entries per category
+    .sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime());
 }
 
 type MutedState = Record<CategoryKey, boolean>;
@@ -606,7 +604,7 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
                   )}
                   {entry.media &&
                     entry.media.length > 0 &&
-                    entry.media.slice(0, 2).map((mediaUrl, index) => {
+                    entry.media.map((mediaUrl, index) => {
                       const hostname = getUrlHostname(mediaUrl);
                       if (!hostname) return null;
 
