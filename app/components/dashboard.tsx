@@ -8,6 +8,55 @@ import { notificationsClient } from '../clients/notifications';
 import { postsAPI } from '../clients/posts';
 import type { Category, CategoryKey, Post, PostEntry } from '../types/api';
 
+// Media Carousel Component
+function MediaCarousel({ media, className = "" }: { media: string[]; className?: string }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  if (!media || media.length === 0) return null;
+
+  const nextImage = () => {
+    setCurrentIndex((prev) => (prev + 1) % media.length);
+  };
+
+  const prevImage = () => {
+    setCurrentIndex((prev) => (prev - 1 + media.length) % media.length);
+  };
+
+  return (
+    <div className={`media-carousel ${className}`}>
+      <div className="media-carousel-container">
+        <img
+          src={media[currentIndex]}
+          alt={`Media ${currentIndex + 1}`}
+          className="media-carousel-image"
+          onError={(e) => {
+            e.currentTarget.style.display = 'none';
+          }}
+        />
+        {media.length > 1 && (
+          <>
+            <button className="media-carousel-btn media-carousel-prev" onClick={prevImage}>
+              ‹
+            </button>
+            <button className="media-carousel-btn media-carousel-next" onClick={nextImage}>
+              ›
+            </button>
+            <div className="media-carousel-indicators">
+              {media.map((_, index) => (
+                <button
+                  key={index}
+                  className={`media-carousel-indicator ${index === currentIndex ? 'active' : ''}`}
+                  onClick={() => setCurrentIndex(index)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const CATEGORIES: Category[] = [
   { key: 'all', label: 'All', accent: 'gray' },
   { key: 'relevant', label: 'Relevant', accent: 'purple' },
@@ -46,17 +95,35 @@ const CATEGORY_MAPPING: Record<string, CategoryKey> = {
   legal: 'politics', // Legal goes to politics
 };
 
-// Helper function to safely get hostname from URL, skipping non-HTTP protocols
+// Helper function to safely get hostname from URL, supporting Bluesky at:// protocol
 function getUrlHostname(url: string): string | null {
   try {
-    // Skip non-HTTP protocols like at://, did:, etc.
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    // Handle Bluesky at:// protocol and other HTTP protocols
+    if (!url || (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('at://'))) {
       return null;
+    }
+    if (url.startsWith('at://')) {
+      // For Bluesky at:// protocol, extract the domain/handle part
+      const atMatch = url.match(/^at:\/\/([^\/]+)/);
+      return atMatch ? atMatch[1] : null;
     }
     return new URL(url).hostname;
   } catch {
     return null;
   }
+}
+
+// Helper function to convert Bluesky at:// URIs to web URLs
+function convertBlueskyUri(uri: string): string {
+  if (uri.startsWith('at://')) {
+    // Convert at://did:plc:handle/app.bsky.feed.post/postid to https://bsky.app/profile/handle/post/postid
+    const match = uri.match(/^at:\/\/([^\/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+    if (match) {
+      const [, handle, postId] = match;
+      return `https://bsky.app/profile/${handle}/post/${postId}`;
+    }
+  }
+  return uri;
 }
 
 // Helper function to check if a URL is an image
@@ -598,47 +665,31 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
               {(entry.uri || (entry.media && entry.media.length > 0)) && (
                 <div className='entry-media'>
                   {entry.uri && getUrlHostname(entry.uri) && (
-                    <a href={entry.uri} target='_blank' rel='noopener noreferrer' className='media-link'>
+                    <a href={convertBlueskyUri(entry.uri)} target='_blank' rel='noopener noreferrer' className='media-link'>
                       🔗 Source ({getUrlHostname(entry.uri)})
                     </a>
                   )}
+                  
+                  {/* Media Carousel for images */}
+                  {(() => {
+                    const imageMedia = entry.media?.filter(isImageUrl) || [];
+                    return imageMedia.length > 0 ? (
+                      <MediaCarousel media={imageMedia} className="post-media-carousel" />
+                    ) : null;
+                  })()}
+                  
+                  {/* Non-image media links */}
                   {entry.media &&
                     entry.media.length > 0 &&
-                    entry.media.map((mediaUrl, index) => {
+                    entry.media.filter(mediaUrl => !isImageUrl(mediaUrl)).map((mediaUrl, index) => {
                       const hostname = getUrlHostname(mediaUrl);
                       if (!hostname) return null;
 
-                      if (isImageUrl(mediaUrl)) {
-                        return (
-                          <div key={index} className='media-image'>
-                            <img
-                              src={mediaUrl}
-                              alt={`Media ${index + 1}`}
-                              className='media-preview'
-                              onError={(e) => {
-                                // Fallback to link if image fails to load
-                                e.currentTarget.style.display = 'none';
-                                const fallbackLink = document.createElement('a');
-                                fallbackLink.href = entry.uri || mediaUrl;
-                                fallbackLink.target = '_blank';
-                                fallbackLink.rel = 'noopener noreferrer';
-                                fallbackLink.className = 'media-link';
-                                fallbackLink.textContent = `🔗 ${getUrlHostname(entry.uri || mediaUrl)}`;
-                                e.currentTarget.parentNode?.appendChild(fallbackLink);
-                              }}
-                            />
-                            <a href={entry.uri || mediaUrl} target='_blank' rel='noopener noreferrer' className='media-link-overlay'>
-                              🔗{' '}
-                            </a>
-                          </div>
-                        );
-                      } else {
-                        return (
-                          <a key={index} href={mediaUrl} target='_blank' rel='noopener noreferrer' className='media-link'>
-                            🔗 {hostname}
-                          </a>
-                        );
-                      }
+                      return (
+                        <a key={index} href={mediaUrl} target='_blank' rel='noopener noreferrer' className='media-link'>
+                          🔗 {hostname}
+                        </a>
+                      );
                     })}
                 </div>
               )}
@@ -665,7 +716,7 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
                     <div className='expanded-row'>
                       <strong>Source:</strong> {entry.author_name || entry.author}
                       {entry.author_handle && (
-                        <a href={`https://twitter.com/${entry.author_handle}`} target='_blank' rel='noopener noreferrer' className='expanded-handle'>
+                        <a href={`https://bsky.app/profile/${entry.author_handle}`} target='_blank' rel='noopener noreferrer' className='expanded-handle'>
                           @{entry.author_handle}
                         </a>
                       )}
@@ -708,7 +759,7 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
                           className='btn btn-small'
                           onClick={async () => {
                             try {
-                              await navigator.clipboard.writeText(entry.uri);
+                              await navigator.clipboard.writeText(convertBlueskyUri(entry.uri));
                             } catch (err) {
                               console.warn('Failed to copy link:', err);
                             }
@@ -718,7 +769,7 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
                         </button>
                       )}
                       {entry.uri && (
-                        <a href={entry.uri} target='_blank' rel='noopener noreferrer' className='btn btn-small'>
+                        <a href={convertBlueskyUri(entry.uri)} target='_blank' rel='noopener noreferrer' className='btn btn-small'>
                           Open
                         </a>
                       )}

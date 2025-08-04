@@ -4,7 +4,7 @@ export interface Post {
   author: string;
   source: string;
   uri: string;
-  posted_at: string;
+  createdAt: string;
   relevance: number;
   lang: string;
   hash: string;
@@ -17,6 +17,18 @@ export interface Post {
   original: string | null;
   received_at: string;
   categories: string[];
+}
+
+export interface Event {
+  id: number;
+  uuid: string;
+  title: string;
+  summary: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  posts_count: number;
+  posts: Post[];
 }
 
 export interface PostEntry {
