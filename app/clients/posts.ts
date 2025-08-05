@@ -28,7 +28,7 @@ export const postsAPI = {
 
   async getAllEvents(): Promise<Event[]> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/posts/events`);
+      const response = await axios.get(`${API_BASE_URL}/events`);
       return response.data.events || [];
     } catch (error) {
       console.error('Error fetching events:', error);
