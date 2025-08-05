@@ -9,7 +9,7 @@ import { postsAPI } from '../clients/posts';
 import type { Category, CategoryKey, Post, PostEntry } from '../types/api';
 
 // Media Carousel Component
-function MediaCarousel({ media, className = "" }: { media: string[]; className?: string }) {
+function MediaCarousel({ media, className = '' }: { media: string[]; className?: string }) {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   if (!media || media.length === 0) return null;
@@ -24,30 +24,26 @@ function MediaCarousel({ media, className = "" }: { media: string[]; className?:
 
   return (
     <div className={`media-carousel ${className}`}>
-      <div className="media-carousel-container">
+      <div className='media-carousel-container'>
         <img
           src={media[currentIndex]}
           alt={`Media ${currentIndex + 1}`}
-          className="media-carousel-image"
+          className='media-carousel-image'
           onError={(e) => {
             e.currentTarget.style.display = 'none';
           }}
         />
         {media.length > 1 && (
           <>
-            <button className="media-carousel-btn media-carousel-prev" onClick={prevImage}>
+            <button className='media-carousel-btn media-carousel-prev' onClick={prevImage}>
               ‹
             </button>
-            <button className="media-carousel-btn media-carousel-next" onClick={nextImage}>
+            <button className='media-carousel-btn media-carousel-next' onClick={nextImage}>
               ›
             </button>
-            <div className="media-carousel-indicators">
+            <div className='media-carousel-indicators'>
               {media.map((_, index) => (
-                <button
-                  key={index}
-                  className={`media-carousel-indicator ${index === currentIndex ? 'active' : ''}`}
-                  onClick={() => setCurrentIndex(index)}
-                />
+                <button key={index} className={`media-carousel-indicator ${index === currentIndex ? 'active' : ''}`} onClick={() => setCurrentIndex(index)} />
               ))}
             </div>
           </>
@@ -381,9 +377,7 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
 }
 
 function useCategoryEntries(category: CategoryKey, allEntries: PostEntry[]): PostEntry[] {
-  return allEntries
-    .filter((entry) => entry.category === category)
-    .sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime());
+  return allEntries.filter((entry) => entry.category === category).sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime());
 }
 
 type MutedState = Record<CategoryKey, boolean>;
@@ -458,32 +452,38 @@ export function Dashboard() {
       .filter(Boolean),
   ];
 
+  // Reset function for layout
+  const resetColumnOrder = () => {
+    const defaultOrder = CATEGORIES.map((cat) => cat.key);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('column-order', JSON.stringify(defaultOrder));
+      window.location.reload(); // Simple way to reset the state
+    }
+  };
+
   if (loading) {
     return (
-      <div className='dashboard-bg'>
-        <Header />
+      // <Layout showConnectionStatus={true} error={error}>
         <div className='dashboard'>
           <div style={{ color: '#e4e7eb', padding: '24px', textAlign: 'center' }}>Loading news feeds...</div>
         </div>
-      </div>
+      // </Layout>
     );
   }
 
   if (error && error.message.includes('loading news feeds')) {
     // Only show full error screen for initial loading errors
     return (
-      <div className='dashboard-bg'>
-        <Header />
+      // <Layout showConnectionStatus={true} error={error}>
         <div className='dashboard'>
           <div style={{ color: '#ef4444', padding: '24px', textAlign: 'center' }}>Error loading news feeds: {error.message}</div>
         </div>
-      </div>
+      // </Layout>
     );
   }
 
   return (
-    <div className='dashboard-bg'>
-      <Header error={error} />
+    // <Layout showConnectionStatus={true} error={error} onResetLayout={resetColumnOrder}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <div className='dashboard'>
           <SortableContext items={orderedCategories.map((cat) => cat.key)} strategy={horizontalListSortingStrategy}>
@@ -504,55 +504,7 @@ export function Dashboard() {
           </SortableContext>
         </div>
       </DndContext>
-      <div className='dashboard-noise' />
-    </div>
-  );
-}
-
-function Header({ error }: { error?: Error | null }) {
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const [isConnected, setIsConnected] = useState(false);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(new Date());
-      setIsConnected(notificationsClient.isConnected());
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const resetColumnOrder = () => {
-    const defaultOrder = CATEGORIES.map((cat) => cat.key);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('column-order', JSON.stringify(defaultOrder));
-      window.location.reload(); // Simple way to reset the state
-    }
-  };
-
-  return (
-    <header className='header'>
-      <div className='header-left'>
-        <span className='header-title'>monitor</span>
-        <span className='header-live'>
-          <span className={`led led-header ${isConnected ? '' : 'led-error'}`} />
-          {isConnected ? 'LIVE' : 'OFFLINE'}
-        </span>
-        <span className='header-update'>
-          {error && error.message.includes('Real-time connection') ? (
-            <span style={{ color: '#f59e0b' }}>⚠️ {error.message}</span>
-          ) : isConnected ? (
-            'Real-time updates active'
-          ) : (
-            `Last update: ${currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
-          )}
-        </span>
-      </div>
-      <div className='header-right'>
-        <button className='btn btn-small' onClick={resetColumnOrder} title='Reset column order'>
-          Reset Layout
-        </button>
-      </div>
-    </header>
+    // </Layout>
   );
 }
 
@@ -669,28 +621,28 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
                       🔗 Source ({getUrlHostname(entry.uri)})
                     </a>
                   )}
-                  
+
                   {/* Media Carousel for images */}
                   {(() => {
                     const imageMedia = entry.media?.filter(isImageUrl) || [];
-                    return imageMedia.length > 0 ? (
-                      <MediaCarousel media={imageMedia} className="post-media-carousel" />
-                    ) : null;
+                    return imageMedia.length > 0 ? <MediaCarousel media={imageMedia} className='post-media-carousel' /> : null;
                   })()}
-                  
+
                   {/* Non-image media links */}
                   {entry.media &&
                     entry.media.length > 0 &&
-                    entry.media.filter(mediaUrl => !isImageUrl(mediaUrl)).map((mediaUrl, index) => {
-                      const hostname = getUrlHostname(mediaUrl);
-                      if (!hostname) return null;
+                    entry.media
+                      .filter((mediaUrl) => !isImageUrl(mediaUrl))
+                      .map((mediaUrl, index) => {
+                        const hostname = getUrlHostname(mediaUrl);
+                        if (!hostname) return null;
 
-                      return (
-                        <a key={index} href={mediaUrl} target='_blank' rel='noopener noreferrer' className='media-link'>
-                          🔗 {hostname}
-                        </a>
-                      );
-                    })}
+                        return (
+                          <a key={index} href={mediaUrl} target='_blank' rel='noopener noreferrer' className='media-link'>
+                            🔗 {hostname}
+                          </a>
+                        );
+                      })}
                 </div>
               )}
               <div className='entry-meta'>

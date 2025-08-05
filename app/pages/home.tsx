@@ -1,13 +1,15 @@
-import type { Route } from "./+types/home";
-import { MainDashboard } from "../components/main-dashboard";
+import { Dashboard } from '~/components/dashboard';
+import type { Route } from './+types/home';
+import { SharedLayout } from '~/layouts/layout';
 
 export function meta({}: Route.MetaArgs) {
-  return [
-    { title: "New React Router App" },
-    { name: "description", content: "Welcome to React Router!" },
-  ];
+  return [{ title: 'Dashboard - Monitor' }, { name: 'description', content: 'Monitor dashboard - social media posts' }];
 }
 
 export default function Home() {
-  return <MainDashboard />;
+  return (
+    <SharedLayout currentPage="posts">
+      <Dashboard />
+    </SharedLayout>
+  );
 }

@@ -100,7 +100,7 @@ body, .dashboard-bg {
   gap: 20px;
   padding: 24px;
   z-index: 1;
-  min-height: calc(100vh - 64px);
+  min-height: calc(100vh - 120px); /* Adjusted for header + tabs */
   width: 100%;
   overflow-x: auto;
 }
@@ -1385,13 +1385,7 @@ html {
   height: 300px;
 }
 
-/* Main Dashboard Tabs */
-.main-dashboard {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
+/* Dashboard Navigation Tabs */
 .dashboard-tabs {
   display: flex;
   background: rgba(15, 20, 25, 0.95);
@@ -1413,6 +1407,8 @@ html {
   transition: all 0.2s ease;
   border-bottom: 2px solid transparent;
   position: relative;
+  text-decoration: none;
+  display: inline-block;
 }
 
 .tab-button:hover {
@@ -1424,15 +1420,10 @@ html {
   border-bottom-color: #60a5fa;
 }
 
-.tab-content {
-  flex: 1;
-  overflow: hidden;
-}
-
 /* Events Dashboard */
 .events-dashboard {
   padding: 24px;
-  height: calc(100vh - 120px);
+  height: calc(100vh - 160px); /* Adjusted for tab bar */
   overflow-y: auto;
   display: flex;
   flex-direction: column;
