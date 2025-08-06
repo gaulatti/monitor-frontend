@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { Event } from '../types/api';
 
-const API_BASE_URL = 'http://api.monitor.gaulatti.com';
+const API_BASE_URL = 'https://api.monitor.gaulatti.com';
 
 export class EventsAPI {
   /**
