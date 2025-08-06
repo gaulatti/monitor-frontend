@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 // import { DashboardLayout } from '~/layouts/layout';
 import '../app.css';
-import { postsAPI } from '../clients/posts';
+import { eventsAPI } from '../clients/events';
+import { useSSEEvents } from '../hooks/use-sse-events';
 import type { Event, Post } from '../types/api';
 
 // Helper function to safely get hostname from URL
@@ -299,15 +300,66 @@ export function Events() {
   const [error, setError] = useState<Error | null>(null);
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
   const [filter, setFilter] = useState('');
+  const [isConnectedToSSE, setIsConnectedToSSE] = useState(false);
+
+  // Handle real-time event updates
+  const handleEventUpdate = useCallback((updatedEvent: Event) => {
+    console.log('Received SSE event update:', updatedEvent);
+    
+    setEvents(prevEvents => {
+      // Check if this is a new event or an update to an existing one
+      const existingIndex = prevEvents.findIndex(e => e.uuid === updatedEvent.uuid);
+      
+      if (existingIndex >= 0) {
+        // Update existing event
+        const newEvents = [...prevEvents];
+        newEvents[existingIndex] = { ...newEvents[existingIndex], ...updatedEvent };
+        // Sort by creation date, newest first
+        return newEvents.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      } else {
+        // Add new event
+        const newEvents = [...prevEvents, updatedEvent];
+        // Sort by creation date, newest first
+        return newEvents.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      }
+    });
+  }, []);
+
+  // Handle SSE posts (which might be related to events)
+  const handlePostUpdate = useCallback((post: Post) => {
+    console.log('Received SSE post update:', post);
+    // For now, we'll just log it. In the future, we could:
+    // 1. Update posts within events if they are expanded
+    // 2. Show notifications about new posts
+    // 3. Update post counts in events
+  }, []);
+
+  // Handle SSE connection errors
+  const handleSSEError = useCallback((error: Error) => {
+    console.error('SSE connection error:', error);
+    setIsConnectedToSSE(false);
+  }, []);
+
+  // Setup SSE connection
+  const { connect, disconnect, isConnected } = useSSEEvents({
+    onEvent: handleEventUpdate,
+    onPost: handlePostUpdate,
+    onError: handleSSEError,
+    autoConnect: true
+  });
+
+  useEffect(() => {
+    setIsConnectedToSSE(isConnected());
+  }, [isConnected]);
 
   useEffect(() => {
     const fetchEvents = async () => {
       try {
         setLoading(true);
-        const eventsData = await postsAPI.getAllEvents();
+        const eventsData = await eventsAPI.getAllEvents();
         console.log('Fetched events:', eventsData.length);
         // Sort events by creation date, newest first
-        setEvents(eventsData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+        setEvents(eventsData.sort((a: Event, b: Event) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
         setError(null);
       } catch (err) {
         console.error('Error fetching events:', err);
@@ -354,6 +406,11 @@ export function Events() {
             <span className='column-title'>EVENTS</span>
             <span className='column-count'>({filteredEvents.length})</span>
             <span className='led led-col' />
+            {/* SSE Connection Status */}
+            <div className='sse-status' title={isConnectedToSSE ? 'Connected to live updates' : 'Disconnected from live updates'}>
+              <span className={`sse-indicator ${isConnectedToSSE ? 'connected' : 'disconnected'}`}>●</span>
+              <span className='sse-text'>{isConnectedToSSE ? 'LIVE' : 'OFFLINE'}</span>
+            </div>
           </div>
           <div className='events-header-search'>
             <input className='filter-input' value={filter} onChange={(e) => setFilter(e.target.value)} placeholder='Filter events...' />

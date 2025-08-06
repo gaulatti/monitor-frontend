@@ -1,6 +1,6 @@
-import type { Post } from '../types/api';
+import type { Post, Event } from '../types/api';
 
-export interface NotificationPayload {
+export interface PostNotificationPayload {
   id: string;
   content: string;
   source: string;
@@ -21,6 +21,25 @@ export interface NotificationPayload {
   categories: string[];
 }
 
+export interface EventNotificationPayload {
+  uuid: string;
+  title: string;
+  summary: string;
+  status: 'open' | 'archived' | 'dismissed';
+  created_at: string;
+  updated_at: string;
+  posts_count: number;
+  averageRelevance?: number;
+}
+
+export interface SSEMessage {
+  type: 'post' | 'event' | 'ingested-post';
+  data: PostNotificationPayload | EventNotificationPayload | any;
+}
+
+// For backward compatibility
+export type NotificationPayload = PostNotificationPayload;
+
 export class NotificationsClient {
   private eventSource: EventSource | null = null;
   private baseUrl: string;
@@ -29,14 +48,18 @@ export class NotificationsClient {
   private reconnectDelay: number = 1000; // Start with 1 second
   private isReconnecting: boolean = false;
 
-  constructor(baseUrl: string = 'https://api.monitor.gaulatti.com') {
+  constructor(baseUrl: string = 'http://api.monitor.gaulatti.com') {
     this.baseUrl = baseUrl;
   }
 
   /**
-   * Connect to the SSE notifications endpoint
+   * Connect to the SSE notifications endpoint for both posts and events
    */
-  connect(onMessage: (post: Post) => void, onError?: (error: Event) => void): () => void {
+  connect(
+    onPost?: (post: Post) => void,
+    onEvent?: (event: Event) => void,
+    onError?: (error: Error) => void
+  ): () => void {
     if (this.eventSource) {
       this.disconnect();
     }
@@ -45,7 +68,7 @@ export class NotificationsClient {
       if (this.isReconnecting && this.reconnectAttempts >= this.maxReconnectAttempts) {
         console.log('Max reconnection attempts reached. Stopping reconnection.');
         if (onError) {
-          onError(new Event('max-reconnect-attempts'));
+          onError(new Error('max-reconnect-attempts'));
         }
         return;
       }
@@ -61,31 +84,86 @@ export class NotificationsClient {
           this.reconnectAttempts = 0;
           this.reconnectDelay = 1000;
 
-          const payload: NotificationPayload = JSON.parse(event.data);
+          // Try to parse as SSE message with type information
+          let messageData: SSEMessage;
+          try {
+            messageData = JSON.parse(event.data);
+          } catch {
+            // Fallback: assume it's a legacy post notification
+            const payload: PostNotificationPayload = JSON.parse(event.data);
+            messageData = { type: 'post', data: payload };
+          }
 
-          // Transform notification payload to Post format
-          const post: Post = {
-            id: payload.id,
-            content: payload.content,
-            source: payload.source,
-            author: payload.author,
-            uri: payload.uri,
-            posted_at: payload.posted_at,
-            relevance: payload.relevance,
-            lang: payload.lang,
-            hash: payload.hash,
-            author_id: payload.author_id,
-            author_name: payload.author_name,
-            author_handle: payload.author_handle,
-            author_avatar: payload.author_avatar,
-            media: payload.media,
-            linkPreview: payload.linkPreview,
-            original: payload.original,
-            received_at: payload.received_at,
-            categories: payload.categories,
-          };
+          if (messageData.type === 'post' && onPost) {
+            const payload = messageData.data as PostNotificationPayload;
+            
+            // Transform notification payload to Post format
+            const post: Post = {
+              id: payload.id,
+              content: payload.content,
+              source: payload.source,
+              author: payload.author,
+              uri: payload.uri,
+              createdAt: payload.posted_at,
+              relevance: payload.relevance,
+              lang: payload.lang,
+              hash: payload.hash,
+              author_id: payload.author_id,
+              author_name: payload.author_name,
+              author_handle: payload.author_handle,
+              author_avatar: payload.author_avatar,
+              media: payload.media,
+              linkPreview: payload.linkPreview,
+              original: payload.original,
+              received_at: payload.received_at,
+              categories: payload.categories,
+            };
 
-          onMessage(post);
+            onPost(post);
+          } else if (messageData.type === 'event' && onEvent) {
+            const payload = messageData.data as EventNotificationPayload;
+            
+            // Transform notification payload to Event format
+            const eventObj: Event = {
+              id: 0, // This will be set by the backend
+              uuid: payload.uuid,
+              title: payload.title,
+              summary: payload.summary,
+              status: payload.status,
+              created_at: payload.created_at,
+              updated_at: payload.updated_at,
+              posts_count: payload.posts_count,
+              posts: [], // Will be populated if needed
+            };
+
+            onEvent(eventObj);
+          } else if (messageData.type === 'ingested-post' && onPost) {
+            // Handle ingested posts (they have more detailed structure)
+            const payload = messageData.data;
+            
+            const post: Post = {
+              id: payload.uuid || payload.id,
+              content: payload.content,
+              source: payload.source,
+              author: payload.author,
+              uri: payload.uri,
+              createdAt: payload.posted_at || payload.createdAt,
+              relevance: payload.relevance,
+              lang: payload.lang,
+              hash: payload.hash,
+              author_id: payload.author_id,
+              author_name: payload.author_name,
+              author_handle: payload.author_handle,
+              author_avatar: payload.author_avatar,
+              media: payload.media || [],
+              linkPreview: payload.linkPreview || '',
+              original: payload.original,
+              received_at: payload.received_at,
+              categories: payload.categories || [],
+            };
+
+            onPost(post);
+          }
         } catch (error) {
           console.error('Error parsing SSE message:', error);
         }
@@ -118,11 +196,18 @@ export class NotificationsClient {
     return () => this.disconnect();
   }
 
-  private attemptReconnect(connectionFn: () => void, onError?: (error: Event) => void) {
+  /**
+   * Legacy method for backward compatibility - connects only for posts
+   */
+  connectPosts(onMessage: (post: Post) => void, onError?: (error: Error) => void): () => void {
+    return this.connect(onMessage, undefined, onError);
+  }
+
+  private attemptReconnect(connectionFn: () => void, onError?: (error: Error) => void) {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.log('Max reconnection attempts reached');
       if (onError) {
-        onError(new Event('max-reconnect-attempts'));
+        onError(new Error('max-reconnect-attempts'));
       }
       return;
     }
