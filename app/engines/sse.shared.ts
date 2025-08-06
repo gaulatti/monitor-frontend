@@ -11,7 +11,9 @@ let eventSource: EventSource | null = null;
 function initEventSource(): void {
   if (eventSource) return;
 
-  const sseUrl = 'http://api.monitor.gaulatti.com/notifications';
+  const sseUrl = globalScope.location.origin.includes('localhost')
+    ? `http://localhost:${import.meta.env.VITE_API_PORT}/notifications`
+    : `${import.meta.env.VITE_API_FQDN}/notifications`;
 
   eventSource = new EventSource(sseUrl);
 

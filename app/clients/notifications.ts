@@ -48,7 +48,7 @@ export class NotificationsClient {
   private reconnectDelay: number = 1000; // Start with 1 second
   private isReconnecting: boolean = false;
 
-  constructor(baseUrl: string = 'http://api.monitor.gaulatti.com') {
+  constructor(baseUrl: string = 'https://api.monitor.gaulatti.com') {
     this.baseUrl = baseUrl;
   }
 
