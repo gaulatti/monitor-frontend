@@ -2,11 +2,11 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, horizontalListSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import '../app.css';
 import { notificationsClient } from '../clients/notifications';
 import { postsAPI } from '../clients/posts';
-import type { Category, CategoryKey, Post, PostEntry } from '../types/api';
+import type { Category, CategoryKey, Post, PostEntry, Event as ApiEvent } from '../types/api';
 
 // Media Carousel Component
 function MediaCarousel({ media, className = '' }: { media: string[]; className?: string }) {
@@ -275,16 +275,117 @@ function transformPostToEntries(post: Post): PostEntry[] {
   return entries;
 }
 
-function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
+function useRealTimePosts(): [PostEntry[], boolean, Error | null, (categoryKey: CategoryKey) => void, Partial<Record<CategoryKey, boolean>>, Partial<Record<CategoryKey, boolean>>] {
   const [entries, setEntries] = useState<PostEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  
+  // Per-category pagination state
+  const [cursors, setCursors] = useState<Partial<Record<CategoryKey, string | null>>>({});
+  const [loadingStates, setLoadingStates] = useState<Partial<Record<CategoryKey, boolean>>>({});
+  const [hasMoreStates, setHasMoreStates] = useState<Partial<Record<CategoryKey, boolean>>>({});
+
+  // Helper function to update cursors from posts
+  const updateCursors = (posts: Post[], isInitial = false) => {
+    const newCursors: Partial<Record<CategoryKey, string | null>> = isInitial ? {} : { ...cursors };
+    
+    // Process each post to track cursors per category
+    posts.forEach(post => {
+      // Convert post to entries to see which categories it belongs to
+      const postEntries = transformPostToEntries(post);
+      
+      postEntries.forEach(entry => {
+        const category = entry.category as CategoryKey;
+        const posted_at = post.posted_at;
+        
+        // Update cursor to the oldest (minimum) posted_at seen in this category
+        if (!newCursors[category] || posted_at < newCursors[category]!) {
+          newCursors[category] = posted_at;
+        }
+      });
+    });
+    
+    setCursors(newCursors as Record<CategoryKey, string | null>);
+    
+    // Initialize hasMore states if this is initial load
+    if (isInitial) {
+      const newHasMoreStates: Partial<Record<CategoryKey, boolean>> = {};
+      CATEGORIES.forEach(cat => {
+        newHasMoreStates[cat.key] = posts.length >= 50; // Assume more if we got 50
+      });
+      setHasMoreStates(newHasMoreStates as Record<CategoryKey, boolean>);
+    }
+  };
+
+  // Load more posts for a specific category
+  const loadMore = async (categoryKey: CategoryKey) => {
+    if (loadingStates[categoryKey] || !hasMoreStates[categoryKey]) {
+      return;
+    }
+
+    setLoadingStates(prev => ({ ...prev, [categoryKey]: true }));
+
+    try {
+      let posts: Post[];
+      
+      if (categoryKey === 'all') {
+        posts = await postsAPI.getAllPosts({
+          limit: 50,
+          before: cursors[categoryKey] || undefined
+        });
+      } else {
+        // Map category key to API category slug
+        posts = await postsAPI.getAllPosts({
+          limit: 50,
+          before: cursors[categoryKey] || undefined,
+          categories: categoryKey
+        });
+      }
+
+      console.log(`Loaded ${posts.length} more posts for category: ${categoryKey}`);
+
+      if (posts.length > 0) {
+        // Transform and append posts
+        const newEntries = posts.flatMap(transformPostToEntries);
+        
+        setEntries(prevEntries => {
+          // Filter out any duplicate entries by ID
+          const existingIds = new Set(prevEntries.map(e => e.id));
+          const uniqueNewEntries = newEntries.filter(e => !existingIds.has(e.id));
+          
+          return [...prevEntries, ...uniqueNewEntries];
+        });
+
+        // Update cursor with the oldest posted_at from this batch
+        const oldestPost = posts.reduce((oldest, post) => 
+          !oldest || post.posted_at < oldest.posted_at ? post : oldest
+        );
+        
+        setCursors(prev => ({ 
+          ...prev, 
+          [categoryKey]: oldestPost.posted_at
+        }));
+      }
+
+      // Update hasMore state
+      setHasMoreStates(prev => ({
+        ...prev,
+        [categoryKey]: posts.length >= 50
+      }));
+
+    } catch (err) {
+      console.error(`Error loading more posts for category ${categoryKey}:`, err);
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [categoryKey]: false }));
+    }
+  };
 
   useEffect(() => {
     const fetchInitialPosts = async () => {
       try {
         setLoading(true);
-        const posts = await postsAPI.getAllPosts();
+        // Fetch only 50 posts initially
+        const posts = await postsAPI.getAllPosts({ limit: 50 });
         console.log(
           'Initial posts sample:',
           posts.slice(0, 2).map((p) => ({ id: p.id, uri: p.uri, media: p.media, linkPreview: p.linkPreview }))
@@ -306,6 +407,10 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
         console.log('Total transformed entries:', transformedEntries.length);
 
         setEntries(transformedEntries);
+        
+        // Initialize cursors and hasMore states
+        updateCursors(posts, true);
+        
         setError(null);
       } catch (err) {
         setError(err as Error);
@@ -359,11 +464,12 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
           return allEntries;
         });
       },
-      (error: Event) => {
-        console.warn('SSE connection issue:', error);
+      undefined, // no event handler needed for posts
+      (errorEvent: Error) => {
+        console.warn('SSE connection issue:', errorEvent);
         // Don't set error state immediately - this could be a temporary network issue
         // Only set error if it's a permanent failure (max reconnect attempts reached)
-        if (error.type === 'max-reconnect-attempts') {
+        if (errorEvent.message === 'max-reconnect-attempts') {
           setError(new Error('Real-time connection failed after multiple attempts. Posts will not update automatically.'));
         }
         // For other SSE errors, just log them but don't break the UI
@@ -373,7 +479,7 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
     return cleanup;
   }, []);
 
-  return [entries, loading, error];
+  return [entries, loading, error, loadMore, loadingStates, hasMoreStates];
 }
 
 function useCategoryEntries(category: CategoryKey, allEntries: PostEntry[]): PostEntry[] {
@@ -408,8 +514,8 @@ export function Dashboard() {
     return CATEGORIES.map((cat) => cat.key);
   });
 
-  // Fetch real-time posts
-  const [allEntries, loading, error] = useRealTimePosts();
+  // Fetch real-time posts with pagination support
+  const [allEntries, loading, error, loadMore, loadingStates, hasMoreStates] = useRealTimePosts();
 
   // Set up drag and drop sensors
   const sensors = useSensors(
@@ -499,6 +605,9 @@ export function Dashboard() {
                 onPin={() => setPinned((p) => (p.includes(cat.key) ? p.filter((k) => k !== cat.key) : [cat.key, ...p]))}
                 filter={filters[cat.key] || ''}
                 onFilter={(val) => setFilters((f) => ({ ...f, [cat.key]: val }))}
+                loadMore={() => loadMore(cat.key)}
+                isLoading={!!loadingStates[cat.key]}
+                hasMore={!!hasMoreStates[cat.key]}
               />
             ))}
           </SortableContext>
@@ -518,6 +627,9 @@ type SortableColumnProps = {
   onPin: () => void;
   filter: string;
   onFilter: (val: string) => void;
+  loadMore: () => void;
+  isLoading: boolean;
+  hasMore: boolean;
 };
 
 function SortableColumn(props: SortableColumnProps) {
@@ -547,10 +659,39 @@ type ColumnProps = {
   onFilter: (val: string) => void;
   dragHandleProps?: any;
   isDragging?: boolean;
+  loadMore: () => void;
+  isLoading: boolean;
+  hasMore: boolean;
 };
 
-function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFilter, dragHandleProps, isDragging }: ColumnProps) {
+function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFilter, dragHandleProps, isDragging, loadMore, isLoading, hasMore }: ColumnProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Intersection observer for infinite scroll
+  const handleObserver = useCallback((entities: IntersectionObserverEntry[]) => {
+    const target = entities[0];
+    if (target.isIntersecting && hasMore && !isLoading && !muted) {
+      console.log(`Loading more for category: ${category.key}`);
+      loadMore();
+    }
+  }, [hasMore, isLoading, muted, loadMore, category.key]);
+
+  useEffect(() => {
+    const element = sentinelRef.current;
+    if (!element) return;
+
+    const option = {
+      root: null,
+      rootMargin: "20px",
+      threshold: 0
+    };
+
+    const observer = new IntersectionObserver(handleObserver, option);
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [handleObserver]);
 
   const filteredEntries = filter ? entries.filter((e: PostEntry) => e.text.toLowerCase().includes(filter.toLowerCase())) : entries;
 
@@ -735,8 +876,25 @@ function Column({ category, entries, muted, onMute, pinned, onPin, filter, onFil
             </div>
           );
         })}
-        {filteredEntries.length === 0 && (
+        {filteredEntries.length === 0 && !isLoading && (
           <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280' }}>{muted ? 'Feed muted' : 'No news available for this category'}</div>
+        )}
+        
+        {/* Infinite scroll sentinel */}
+        {hasMore && (
+          <div ref={sentinelRef} style={{ height: '20px', margin: '10px 0' }}>
+            {isLoading && (
+              <div style={{ textAlign: 'center', color: '#6b7280', fontSize: '12px' }}>
+                Loading more...
+              </div>
+            )}
+          </div>
+        )}
+        
+        {!hasMore && filteredEntries.length > 0 && (
+          <div style={{ textAlign: 'center', color: '#6b7280', fontSize: '12px', padding: '10px' }}>
+            No more posts
+          </div>
         )}
       </div>
       <div className='footer'>

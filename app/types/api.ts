@@ -5,6 +5,7 @@ export interface Post {
   source: string;
   uri: string;
   createdAt: string;
+  posted_at: string;
   relevance: number;
   lang: string;
   hash: string;
