@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import '../app.css';
 import { notificationsClient } from '../clients/notifications';
 import { postsAPI } from '../clients/posts';
-import type { Category, CategoryKey, Post, PostEntry } from '../types/api';
+import type { Category, CategoryKey, Post, PostEntry, Event as ApiEvent } from '../types/api';
 
 // Media Carousel Component
 function MediaCarousel({ media, className = '' }: { media: string[]; className?: string }) {
@@ -359,11 +359,12 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null] {
           return allEntries;
         });
       },
-      (error: Event) => {
-        console.warn('SSE connection issue:', error);
+      undefined, // no event handler needed for posts
+      (errorEvent: Error) => {
+        console.warn('SSE connection issue:', errorEvent);
         // Don't set error state immediately - this could be a temporary network issue
         // Only set error if it's a permanent failure (max reconnect attempts reached)
-        if (error.type === 'max-reconnect-attempts') {
+        if (errorEvent.message === 'max-reconnect-attempts') {
           setError(new Error('Real-time connection failed after multiple attempts. Posts will not update automatically.'));
         }
         // For other SSE errors, just log them but don't break the UI
