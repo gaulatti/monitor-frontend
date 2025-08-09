@@ -285,38 +285,6 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null, (categoryKey: 
   const [loadingStates, setLoadingStates] = useState<Partial<Record<CategoryKey, boolean>>>({});
   const [hasMoreStates, setHasMoreStates] = useState<Partial<Record<CategoryKey, boolean>>>({});
 
-  // Helper function to update cursors from posts
-  const updateCursors = (posts: Post[], isInitial = false) => {
-    const newCursors: Partial<Record<CategoryKey, string | null>> = isInitial ? {} : { ...cursors };
-    
-    // Process each post to track cursors per category
-    posts.forEach(post => {
-      // Convert post to entries to see which categories it belongs to
-      const postEntries = transformPostToEntries(post);
-      
-      postEntries.forEach(entry => {
-        const category = entry.category as CategoryKey;
-        const posted_at = post.posted_at;
-        
-        // Update cursor to the oldest (minimum) posted_at seen in this category
-        if (!newCursors[category] || posted_at < newCursors[category]!) {
-          newCursors[category] = posted_at;
-        }
-      });
-    });
-    
-    setCursors(newCursors as Record<CategoryKey, string | null>);
-    
-    // Initialize hasMore states if this is initial load
-    if (isInitial) {
-      const newHasMoreStates: Partial<Record<CategoryKey, boolean>> = {};
-      CATEGORIES.forEach(cat => {
-        newHasMoreStates[cat.key] = posts.length >= 50; // Assume more if we got 50
-      });
-      setHasMoreStates(newHasMoreStates as Record<CategoryKey, boolean>);
-    }
-  };
-
   // Load more posts for a specific category
   const loadMore = async (categoryKey: CategoryKey) => {
     if (loadingStates[categoryKey] || !hasMoreStates[categoryKey]) {
@@ -333,8 +301,15 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null, (categoryKey: 
           limit: 50,
           before: cursors[categoryKey] || undefined
         });
+      } else if (categoryKey === 'relevant') {
+        // For relevant category, fetch from 'all' and filter by relevance
+        posts = await postsAPI.getAllPosts({
+          limit: 100, // Fetch more to get enough high-relevance posts
+          before: cursors[categoryKey] || undefined
+        });
+        posts = posts.filter(post => post.relevance >= 4);
       } else {
-        // Map category key to API category slug
+        // For specific categories, fetch with category filter
         posts = await postsAPI.getAllPosts({
           limit: 50,
           before: cursors[categoryKey] || undefined,
@@ -367,14 +342,28 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null, (categoryKey: 
         }));
       }
 
-      // Update hasMore state
+      // Update hasMore state based on the actual results for this specific category
+      let hasMorePosts = false;
+      if (categoryKey === 'relevant') {
+        // For relevant, check if we got enough high-relevance posts suggesting more exist
+        hasMorePosts = posts.length >= 25; // Lower threshold since we filter by relevance
+      } else {
+        // For other categories, check if we got a full batch
+        hasMorePosts = posts.length >= 50;
+      }
+      
       setHasMoreStates(prev => ({
         ...prev,
-        [categoryKey]: posts.length >= 50
+        [categoryKey]: hasMorePosts
       }));
 
     } catch (err) {
       console.error(`Error loading more posts for category ${categoryKey}:`, err);
+      // On error, disable further loading for this category
+      setHasMoreStates(prev => ({
+        ...prev,
+        [categoryKey]: false
+      }));
     } finally {
       setLoadingStates(prev => ({ ...prev, [categoryKey]: false }));
     }
@@ -384,32 +373,103 @@ function useRealTimePosts(): [PostEntry[], boolean, Error | null, (categoryKey: 
     const fetchInitialPosts = async () => {
       try {
         setLoading(true);
-        // Fetch only 50 posts initially
-        const posts = await postsAPI.getAllPosts({ limit: 50 });
-        console.log(
-          'Initial posts sample:',
-          posts.slice(0, 2).map((p) => ({ id: p.id, uri: p.uri, media: p.media, linkPreview: p.linkPreview }))
-        );
+        
+        // Perform parallel fetches for each category to get independent results
+        const categoryPromises = CATEGORIES.map(async (category) => {
+          try {
+            let posts: Post[];
+            if (category.key === 'all') {
+              // For 'all' category, fetch without category filter
+              posts = await postsAPI.getAllPosts({ limit: 50 });
+            } else if (category.key === 'relevant') {
+              // For 'relevant' category, we'll handle this after getting all posts
+              posts = [];
+            } else {
+              // For specific categories, fetch with category filter
+              posts = await postsAPI.getAllPosts({ 
+                limit: 50, 
+                categories: category.key 
+              });
+            }
+            
+            console.log(`Fetched ${posts.length} posts for category: ${category.key}`);
+            return { category: category.key, posts, success: true };
+          } catch (err) {
+            console.error(`Error fetching posts for category ${category.key}:`, err);
+            return { category: category.key, posts: [], success: false };
+          }
+        });
 
-        // Transform posts to entries and flatten the array since each post can create multiple entries
-        const transformedEntries = posts.flatMap(transformPostToEntries);
-        console.log(
-          'Initial transformed entries sample:',
-          transformedEntries.slice(0, 2).map((e) => ({ id: e.id, uri: e.uri, media: e.media }))
-        );
+        const categoryResults = await Promise.all(categoryPromises);
+        
+        // Initialize pagination states based on actual results per category
+        const newCursors: Partial<Record<CategoryKey, string | null>> = {};
+        const newHasMoreStates: Partial<Record<CategoryKey, boolean>> = {};
+        const newLoadingStates: Partial<Record<CategoryKey, boolean>> = {};
+        
+        // Collect all posts and track per-category states
+        const allPosts: Post[] = [];
+        categoryResults.forEach(({ category, posts, success }) => {
+          if (success && posts.length > 0) {
+            allPosts.push(...posts);
+            
+            // Set cursor to oldest post in this category
+            const oldestPost = posts.reduce((oldest, post) => 
+              !oldest || post.posted_at < oldest.posted_at ? post : oldest
+            );
+            newCursors[category as CategoryKey] = oldestPost.posted_at;
+            
+            // Set hasMore based on whether we got a full batch (50)
+            newHasMoreStates[category as CategoryKey] = posts.length >= 50;
+          } else {
+            // Category has no posts or failed - no pagination needed
+            newCursors[category as CategoryKey] = null;
+            newHasMoreStates[category as CategoryKey] = false;
+          }
+          
+          newLoadingStates[category as CategoryKey] = false;
+        });
 
-        // Debug logging to see category distribution
+        // Handle 'relevant' category separately by filtering high-relevance posts from 'all'
+        const allCategoryResult = categoryResults.find(r => r.category === 'all');
+        if (allCategoryResult && allCategoryResult.success) {
+          const relevantPosts = allCategoryResult.posts.filter(post => post.relevance >= 4);
+          if (relevantPosts.length > 0) {
+            const oldestRelevant = relevantPosts.reduce((oldest, post) => 
+              !oldest || post.posted_at < oldest.posted_at ? post : oldest
+            );
+            newCursors['relevant'] = oldestRelevant.posted_at;
+            // For relevant, hasMore should match the 'all' category since it's a subset
+            newHasMoreStates['relevant'] = newHasMoreStates['all'] || false;
+          } else {
+            newCursors['relevant'] = null;
+            newHasMoreStates['relevant'] = false;
+          }
+        }
+
+        // Remove duplicates from allPosts since 'all' category overlaps with specific categories
+        const uniquePosts = allPosts.reduce((unique, post) => {
+          if (!unique.find(p => p.id === post.id)) {
+            unique.push(post);
+          }
+          return unique;
+        }, [] as Post[]);
+
+        // Transform posts to entries
+        const transformedEntries = uniquePosts.flatMap(transformPostToEntries);
+        
+        // Debug logging
         const categoryCount = transformedEntries.reduce((acc, entry) => {
           acc[entry.category] = (acc[entry.category] || 0) + 1;
           return acc;
         }, {} as Record<string, number>);
-        console.log('Posts per category:', categoryCount);
-        console.log('Total transformed entries:', transformedEntries.length);
+        console.log('Posts per category after initial fetch:', categoryCount);
+        console.log('Pagination states:', newHasMoreStates);
 
         setEntries(transformedEntries);
-        
-        // Initialize cursors and hasMore states
-        updateCursors(posts, true);
+        setCursors(newCursors);
+        setHasMoreStates(newHasMoreStates);
+        setLoadingStates(newLoadingStates);
         
         setError(null);
       } catch (err) {
